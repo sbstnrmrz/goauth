@@ -2507,9 +2507,11 @@ func TestMount_RegistersEveryRoute(t *testing.T) {
 	a := newAuth(t, mock, Config{})
 	a.Mount(e, "/auth")
 
+	// Echo v5 exposes the route table through the router, not the Echo value,
+	// and RouteInfo carries fields rather than accessor methods.
 	routes := map[string]bool{}
-	for _, r := range e.Routes() {
-		routes[r.Method()+" "+r.Path()] = true
+	for _, r := range e.Router().Routes() {
+		routes[r.Method+" "+r.Path] = true
 	}
 
 	for _, want := range []string{
