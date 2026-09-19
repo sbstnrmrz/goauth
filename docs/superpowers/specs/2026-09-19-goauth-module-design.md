@@ -99,7 +99,19 @@ type Config struct {
     OnSignup      func(ctx context.Context, tx pgx.Tx, userID int64) error
 }
 
-func New(pool *pgxpool.Pool, cfg Config) (*Auth, error)
+// DB is the pool seen through the methods this module needs: the three sqlc
+// requires, plus Begin for the signup transaction. *pgxpool.Pool satisfies it,
+// and so does pgxmock.PgxPoolIface, which is what keeps the handlers testable
+// without a database. Taking *pgxpool.Pool here instead would make every test
+// in this module require a live Postgres.
+type DB interface {
+    Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+    Query(context.Context, string, ...any) (pgx.Rows, error)
+    QueryRow(context.Context, string, ...any) pgx.Row
+    Begin(context.Context) (pgx.Tx, error)
+}
+
+func New(db DB, cfg Config) (*Auth, error)
 ```
 
 Notes on the non-obvious fields:
@@ -115,9 +127,9 @@ Notes on the non-obvious fields:
 ## Public API
 
 ```go
-a, err := goauth.New(pool, goauth.Config{ /* ... */ })
+a, err := goauth.New(pool, goauth.Config{ /* ... */ })   // pool is *pgxpool.Pool
 
-a.Mount(e.Group("/auth"))          // signup, login, logout, forgot/reset-password
+a.Mount(e, "/auth")                // signup, login, logout, forgot/reset-password
 e.Use(a.RequireAuth())
 adminRoutes := e.Group("/admin", goauth.RequireRole("admin"))
 users.PATCH("/me/password", a.ChangePassword())
@@ -126,9 +138,9 @@ userID, ok := goauth.UserIDFromContext(c)
 role, ok := goauth.RoleFromContext(c)
 ```
 
-`RequireRole` stays a free function — it reads the context and never touches the database. `Mount` registers the six auth routes as a group so the consumer picks the prefix; the individual handlers stay exported for anyone who wants to wire them one by one.
+`RequireRole` stays a free function — it reads the context and never touches the database. `Mount` registers the six auth routes under a prefix the consumer picks; the individual handlers stay exported for anyone who wants to wire them one by one.
 
-`Mount` also records the group's prefix on the `Auth` value, and that recorded prefix is what `RequireAuth` exempts. This matters because Echo v5 applies `e.Use` middleware to every route regardless of registration order, so being registered first proves nothing — the exemption has to be explicit. A consumer that wires handlers individually instead of calling `Mount` has no recorded prefix and must exempt its own login routes through `Skipper`; `New` cannot detect that case, so it is documented rather than validated.
+`Mount` takes the prefix rather than a ready-made `*echo.Group` and creates the group itself, because Echo v5 does not expose a group's prefix — there is no `(*echo.Group).Prefix()` and the field is unexported, so a group handed in could not say what to exempt. The prefix it records is what `RequireAuth` exempts. This matters because Echo v5 applies `e.Use` middleware to every route regardless of registration order, so being registered first proves nothing — the exemption has to be explicit. A consumer that wires handlers individually instead of calling `Mount` has no recorded prefix and must exempt its own login routes through `Skipper`; `New` cannot detect that case, so it is documented rather than validated.
 
 Behaviour is preserved exactly, including the parts that are deliberate and easy to "fix" by accident:
 
