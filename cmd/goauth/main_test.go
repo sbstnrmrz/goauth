@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,13 +99,17 @@ func TestWriteSchema_ForceOverwrites(t *testing.T) {
 	}
 }
 
-// Without -o the schema still goes to stdout, so existing shell redirection
-// keeps working.
-func TestRun_WithoutOutputPathDoesNotWriteAFile(t *testing.T) {
+// Without -o the schema goes to stdout, so it can still be piped.
+func TestGenerate_WithoutOutputPathWritesToStdout(t *testing.T) {
 	dir := t.TempDir()
 
-	if err := run("", false); err != nil {
+	var stdout bytes.Buffer
+	if err := run([]string{"generate"}, &stdout); err != nil {
 		t.Fatalf("run returned error: %v", err)
+	}
+
+	if stdout.String() != goauth.Schema() {
+		t.Fatal("stdout is not the published schema")
 	}
 
 	entries, err := os.ReadDir(dir)
@@ -113,6 +118,59 @@ func TestRun_WithoutOutputPathDoesNotWriteAFile(t *testing.T) {
 	}
 
 	if len(entries) != 0 {
-		t.Fatalf("run wrote %d file(s) without -o", len(entries))
+		t.Fatalf("generate wrote %d file(s) without -o", len(entries))
+	}
+}
+
+// The -o path travels from the argument list through the subcommand's own
+// FlagSet, which is the part a subcommand split can quietly get wrong.
+func TestGenerate_OutputFlagReachesTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "migrations", "001_auth.sql")
+
+	var stdout bytes.Buffer
+	if err := run([]string{"generate", "-o", path}, &stdout); err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read the written file: %v", err)
+	}
+
+	if string(written) != goauth.Schema() {
+		t.Fatal("the written file is not the published schema")
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatal("generate wrote to stdout as well as to the file")
+	}
+}
+
+func TestRun_RejectsAnUnknownCommand(t *testing.T) {
+	var stdout bytes.Buffer
+
+	err := run([]string{"migrate"}, &stdout)
+	if err == nil {
+		t.Fatal("run accepted an unknown command")
+	}
+
+	if !strings.Contains(err.Error(), "migrate") {
+		t.Fatalf("the error does not name the command: %v", err)
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatal("an unknown command wrote to stdout")
+	}
+}
+
+func TestRun_RejectsNoCommand(t *testing.T) {
+	var stdout bytes.Buffer
+
+	if err := run(nil, &stdout); err == nil {
+		t.Fatal("run accepted an empty argument list")
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatal("a missing command wrote to stdout")
 	}
 }

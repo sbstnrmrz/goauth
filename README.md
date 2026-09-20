@@ -19,7 +19,14 @@ goauth owns four tables — `users`, `accounts`, `sessions`, `verifications` —
 but never applies migrations itself. Publish its DDL into your own chain:
 
 ```bash
-go run github.com/sbstnrmrz/goauth/cmd/authschema -o migrations/001_auth.sql
+go run github.com/sbstnrmrz/goauth/cmd/goauth generate -o migrations/001_auth.sql
+```
+
+Or install the tool once and drop the module path:
+
+```bash
+go install github.com/sbstnrmrz/goauth/cmd/goauth@latest
+goauth generate -o migrations/001_auth.sql
 ```
 
 `-o` writes the file and creates its directory, so this works in a project with

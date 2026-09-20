@@ -2,7 +2,7 @@
 // PostgreSQL, built on pgx/v5 and Echo v5. It owns four tables: accounts,
 // users, sessions and verifications.
 //
-// It never applies migrations. It publishes its DDL through cmd/authschema,
+// It never applies migrations. It publishes its DDL through cmd/goauth,
 // a small program the consumer runs to fold that SQL into their own
 // migration chain, so this module never needs to know how the consumer
 // migrates.
