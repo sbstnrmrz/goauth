@@ -70,9 +70,13 @@ e.PATCH("/users/me/password", a.ChangePassword())
 
 `Mount` registers `POST /auth/signup`, `/login`, `/logout`,
 `/forgot-password`, `/reset-password` and `/reset-password/verify`, and records
-its prefix so `RequireAuth` exempts it. Everything else you need public goes
-through `Config.Skipper`, and each such route must carry its own
-authentication — `RequireAuth` will not be looking.
+its prefix so `RequireAuth` exempts it. The exemption is boundary-checked: with
+a `/auth` mount, `/auth` and `/auth/login` are public but `/authors` is not.
+
+Everything else you need public goes through `Config.Skipper`, and each such
+route must carry its own authentication — `RequireAuth` will not be looking.
+Your `Skipper` is yours to get right; prefer a trailing slash
+(`/webhooks/`) over a bare prefix, for the same reason.
 
 In handlers:
 
@@ -85,7 +89,7 @@ role, ok := goauth.RoleFromContext(c)
 
 | Field | Default | Notes |
 |---|---|---|
-| `Secure` | `false` | `Secure` flag on the session cookie |
+| `Secure` | `false` | `Secure` flag on the session cookie — **set it in production** |
 | `SessionTTL` | 7 days | |
 | `ResetTokenTTL` | 15 minutes | |
 | `CookieName` | `session_token` | |
@@ -113,3 +117,8 @@ role, ok := goauth.RoleFromContext(c)
 - Redeeming a reset deletes every session for that user, on the assumption a
   reset may be recovery from a compromise.
 - `POST /auth/signup` does **not** sign the new user in.
+- `Config.Secure` defaults to `false` so a plain-HTTP development server still
+  receives the cookie. Nothing warns you if you forget it in production, so
+  pass `os.Getenv("APP_ENV") == "production"` or your equivalent.
+- Only the SHA-256 hash of a reset token is ever stored, so a database leak
+  cannot be replayed into a password reset.
