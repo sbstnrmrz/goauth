@@ -149,7 +149,20 @@ role, ok := goauth.RoleFromContext(c)
 
 `Mount` takes the prefix rather than a ready-made `*echo.Group` and creates the group itself, because Echo v5 does not expose a group's prefix — there is no `(*echo.Group).Prefix()` and the field is unexported, so a group handed in could not say what to exempt. The prefix it records is what `RequireAuth` exempts. This matters because Echo v5 applies `e.Use` middleware to every route regardless of registration order, so being registered first proves nothing — the exemption has to be explicit. A consumer that wires handlers individually instead of calling `Mount` has no recorded prefix and must exempt its own login routes through `Skipper`; `New` cannot detect that case, so it is documented rather than validated.
 
-**The prefix exemption is boundary-checked**, and this is load-bearing rather than tidy. `RequireAuth` exempts a path only when it equals the mounted prefix or begins with the prefix plus `/`. A bare `strings.HasPrefix` — which is what the original did, and what this module shipped until it was caught in review — exempts any sibling path that merely starts with the same letters: mounting at `/auth` would make `/authors` and `/authorize` public, and mounting at `/user` would serve a consumer's entire `/users/*` tree with no session at all. The original could get away with it because its prefix list was a hardcoded pair one author had read; here the prefix is consumer-chosen and the module is the front door of several applications.
+**The prefix exemption is boundary-checked**, and this is load-bearing rather than tidy. `RequireAuth` exempts a path only when it equals the mounted prefix or begins with the prefix plus `/`, so the cut always falls on a path separator rather than mid-word.
+
+A bare `strings.HasPrefix` — which is what the original did, and what this module shipped until the final review caught it — exempts any sibling path that merely starts with the same characters. Mounted at `/user`, against the raffle platform's own routes:
+
+| Path | `HasPrefix` | Boundary-checked |
+|---|---|---|
+| `/user` | exempt | exempt |
+| `/user/login` | exempt | exempt |
+| `/users/me/raffles` | **exempt** | needs a session |
+| `/users/me/contacts` | **exempt** | needs a session |
+
+The third and fourth rows are the whole point: an entire customer-facing tree served with no cookie, no session lookup and no role on the context. The original could get away with the loose check because its prefix list was a hardcoded pair one author had read; here the prefix is consumer-chosen and the module is the front door of several applications.
+
+`Mount` also strips a trailing slash before recording the prefix, so `"/auth/"` and `"/auth"` behave identically — otherwise the `prefix+"/"` test would look for `//` and match nothing.
 
 Behaviour is preserved exactly, including the parts that are deliberate and easy to "fix" by accident:
 

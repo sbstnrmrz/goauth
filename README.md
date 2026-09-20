@@ -70,8 +70,11 @@ e.PATCH("/users/me/password", a.ChangePassword())
 
 `Mount` registers `POST /auth/signup`, `/login`, `/logout`,
 `/forgot-password`, `/reset-password` and `/reset-password/verify`, and records
-its prefix so `RequireAuth` exempts it. The exemption is boundary-checked: with
-a `/auth` mount, `/auth` and `/auth/login` are public but `/authors` is not.
+its prefix so `RequireAuth` exempts it. The exemption is boundary-checked — it
+cuts on a path separator, never mid-word. Mounted at `/user`, that exempts
+`/user` and `/user/login` but **not** `/users/me`, which is a different route
+that merely starts with the same characters. A trailing slash on the prefix is
+stripped, so `"/auth/"` and `"/auth"` behave the same.
 
 Everything else you need public goes through `Config.Skipper`, and each such
 route must carry its own authentication — `RequireAuth` will not be looking.
