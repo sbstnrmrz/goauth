@@ -7,6 +7,11 @@ import (
 	"encoding/hex"
 )
 
+// resetTokenPrefix must stay in sync with the hardcoded 'password-reset:%'
+// LIKE pattern in DeleteUserResetTokens (queries/verifications.sql) — that
+// query matches identifiers built from this constant, not the constant
+// itself, so changing one without the other silently stops the delete from
+// matching.
 const resetTokenPrefix = "password-reset:"
 
 // generateToken returns a URL-safe, 256-bit random token.

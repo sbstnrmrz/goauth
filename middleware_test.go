@@ -186,6 +186,93 @@ func TestRequireAuth_SkipsMountedPrefix(t *testing.T) {
 	}
 }
 
+// The mounted prefix exempts itself and everything under it, and nothing that
+// merely starts with the same characters. A naive strings.HasPrefix check
+// would also exempt /authors and /authorize, which is the defect this guards
+// against.
+func TestRequireAuth_PrefixBoundary(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		wantAuth bool // true: reaches the handler unauthenticated; false: 401s
+	}{
+		{"prefix itself is exempt", "/auth", true},
+		{"a route under the prefix is exempt", "/auth/login", true},
+		{"a sibling that merely starts with the prefix is not exempt", "/authors", false},
+		{"another sibling that merely starts with the prefix is not exempt", "/authorize", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
+			}
+			defer mock.Close()
+
+			a := newAuth(t, mock, Config{})
+			a.Mount(echo.New(), "/auth")
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rec := httptest.NewRecorder()
+			c := echo.New().NewContext(req, rec)
+
+			called := false
+			handler := a.RequireAuth()(func(c *echo.Context) error {
+				called = true
+				return c.NoContent(http.StatusOK)
+			})
+
+			if err := handler(c); err != nil {
+				t.Fatalf("handler returned error: %v", err)
+			}
+
+			if called != tt.wantAuth {
+				t.Fatalf("path %q: expected called=%v, got %v", tt.path, tt.wantAuth, called)
+			}
+
+			if !tt.wantAuth && rec.Code != http.StatusUnauthorized {
+				t.Fatalf("path %q: expected 401, got %d", tt.path, rec.Code)
+			}
+		})
+	}
+}
+
+// The worst-case blast radius: a short prefix like "/user" must not swallow
+// an unrelated tree like "/users/me" just because the strings share a prefix.
+func TestRequireAuth_PrefixBoundary_WorstCase(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+
+	a := newAuth(t, mock, Config{})
+	a.Mount(echo.New(), "/user")
+
+	req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+
+	called := false
+	handler := a.RequireAuth()(func(c *echo.Context) error {
+		called = true
+		return c.NoContent(http.StatusOK)
+	})
+
+	if err := handler(c); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if called {
+		t.Fatal("expected /users/me to require authentication despite sharing a prefix with /user")
+	}
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
 // Skipper is what replaced the hardcoded publicPrefixes list: a consumer's
 // webhook route carries its own authentication and sends no cookie.
 func TestRequireAuth_HonoursSkipper(t *testing.T) {

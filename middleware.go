@@ -44,7 +44,8 @@ func RequireRole(roles ...string) echo.MiddlewareFunc {
 // of where the route was registered, so registration order exempts nothing.
 // This function is the only exemption.
 func (a *Auth) isPublic(c *echo.Context) bool {
-	if a.prefix != "" && strings.HasPrefix(c.Request().URL.Path, a.prefix) {
+	p := c.Request().URL.Path
+	if a.prefix != "" && (p == a.prefix || strings.HasPrefix(p, a.prefix+"/")) {
 		return true
 	}
 

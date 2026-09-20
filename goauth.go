@@ -1,3 +1,17 @@
+// Package goauth is email-and-password authentication for Go services on
+// PostgreSQL, built on pgx/v5 and Echo v5. It owns four tables: accounts,
+// users, sessions and verifications.
+//
+// It never applies migrations. It publishes its DDL through cmd/authschema,
+// a small program the consumer runs to fold that SQL into their own
+// migration chain, so this module never needs to know how the consumer
+// migrates.
+//
+// The pieces fit together as: New builds a configured *Auth; Mount registers
+// the signup, login, logout and password-reset routes under a prefix and
+// records that prefix; RequireAuth exempts that prefix and whatever
+// Config.Skipper declares, and requires a valid session cookie for every
+// other route it guards.
 package goauth
 
 import (

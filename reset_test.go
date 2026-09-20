@@ -68,37 +68,6 @@ func (a capturingArg) Match(v any) bool {
 	return ok
 }
 
-func TestForgotPassword_UnknownEmailReturnsNoContent(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed to create mock pool: %v", err)
-	}
-	defer mock.Close()
-
-	mock.ExpectQuery("SELECT (.+) FROM accounts").
-		WithArgs("nobody@example.com", "credential").
-		WillReturnError(pgx.ErrNoRows)
-
-	sender := &recordingSender{}
-	a := newAuth(t, mock, Config{Mailer: sender})
-
-	_, rec := serve(t, a.ForgotPassword(), http.MethodPost, "/auth/forgot-password",
-		`{"email":"nobody@example.com"}`)
-
-	// Unknown addresses must be indistinguishable from known ones.
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected status %d, got %d (body: %s)", http.StatusNoContent, rec.Code, rec.Body.String())
-	}
-
-	if sender.sent {
-		t.Fatal("expected no email to be sent")
-	}
-
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet expectations: %v", err)
-	}
-}
-
 func TestForgotPassword_SendsResetLink(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	if err != nil {
@@ -362,6 +331,10 @@ func TestForgotPassword_UnknownEmailAnswers204(t *testing.T) {
 
 	if sender.sent {
 		t.Fatal("an email was sent for an unknown address")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }
 
