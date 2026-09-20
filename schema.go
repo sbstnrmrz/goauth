@@ -2,7 +2,7 @@ package goauth
 
 import _ "embed"
 
-//go:embed migrations/auth.sql
+//go:embed schema/auth.sql
 var schema string
 
 // Schema returns the DDL this module owns, ready to be written into a

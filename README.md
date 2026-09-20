@@ -19,13 +19,20 @@ goauth owns four tables — `users`, `accounts`, `sessions`, `verifications` —
 but never applies migrations itself. Publish its DDL into your own chain:
 
 ```bash
-go run github.com/sbstnrmrz/goauth/cmd/authschema > migrations/001_auth.sql
+go run github.com/sbstnrmrz/goauth/cmd/authschema -o migrations/001_auth.sql
 ```
+
+`-o` writes the file and creates its directory, so this works in a project with
+no migration chain yet. Without `-o` the schema goes to stdout, for piping.
+Choose the number to suit your chain — goauth's tables must exist before any of
+yours that reference `users(id)`.
 
 Apply it with your migration tool as usual. **Do not regenerate over a
 migration you have already applied** — the tool will not re-run it, and the
-checked-in DDL would stop describing the live database. When goauth changes its
-schema, regenerate *and* hand-write the matching `ALTER` migration.
+checked-in DDL would stop describing the live database. `-o` refuses an
+existing file for that reason; `-f` overwrites once you have decided it is
+safe. When goauth changes its schema, regenerate *and* hand-write the matching
+`ALTER` migration.
 
 Your own tables may reference `users(id)`; that is why the DDL goes into your
 chain rather than a separate one.
