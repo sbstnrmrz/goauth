@@ -78,6 +78,14 @@ type Config struct {
 	// mounted prefix on its own; this is for the consumer's public routes.
 	Skipper func(c *echo.Context) bool
 
+	// Optional marks routes that work with or without a session, such as a
+	// public page that also shows its owner their private records. A valid
+	// session is loaded as on any other route; a missing, unknown or expired
+	// one lets the request through anonymously instead of answering 401, so a
+	// stale cookie never locks a visitor out of a public page. The mounted
+	// prefix and Skipper take precedence: on those routes no session is read.
+	Optional func(c *echo.Context) bool
+
 	// OnSignup runs inside the transaction that creates the user and account,
 	// before commit. A non-nil error rolls the whole signup back.
 	OnSignup func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error

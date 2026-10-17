@@ -57,7 +57,8 @@ func (a *Auth) isPublic(c *echo.Context) bool {
 }
 
 // RequireAuth reads the session cookie, loads the session and publishes the
-// caller onto the request context.
+// caller onto the request context. On a Config.Optional route, a request
+// without a usable session goes on anonymously instead of being rejected.
 func (a *Auth) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
@@ -65,22 +66,30 @@ func (a *Auth) RequireAuth() echo.MiddlewareFunc {
 				return next(c)
 			}
 
+			optional := a.cfg.Optional != nil && a.cfg.Optional(c)
+			unauthorized := func(message string) error {
+				if optional {
+					return next(c)
+				}
+				return c.String(http.StatusUnauthorized, message)
+			}
+
 			cookie, err := c.Cookie(a.cfg.CookieName)
 			if err != nil || cookie.Value == "" {
-				return c.String(http.StatusUnauthorized, "authentication required")
+				return unauthorized("authentication required")
 			}
 
 			row, err := a.q.GetSessionByToken(c.Request().Context(), cookie.Value)
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					return c.String(http.StatusUnauthorized, "authentication required")
+					return unauthorized("authentication required")
 				}
 				slog.Error("failed to load session", "error", err)
 				return c.String(http.StatusInternalServerError, "failed to authenticate")
 			}
 
 			if row.Session.ExpiresAt.Time.Before(time.Now()) {
-				return c.String(http.StatusUnauthorized, "session expired")
+				return unauthorized("session expired")
 			}
 
 			SetUserID(c, row.Session.UserID)

@@ -84,6 +84,23 @@ route must carry its own authentication — `RequireAuth` will not be looking.
 Your `Skipper` is yours to get right; prefer a trailing slash
 (`/webhooks/`) over a bare prefix, for the same reason.
 
+A route that is public but should still know who is asking — a page anyone
+can read, where the owner also sees their private records — goes through
+`Config.Optional` instead:
+
+```go
+Optional: func(c *echo.Context) bool {
+    return c.Request().Method == http.MethodGet && publicReads[c.Path()]
+},
+```
+
+There a valid session is loaded as usual, and a missing, unknown or expired
+one lets the request through with no user on the context rather than
+answering 401, so a stale cookie never locks anyone out of a public page. A
+database error is still a 500. The handler decides what an anonymous caller
+may see. The mounted prefix and `Skipper` win over `Optional`: on those
+routes no session is read at all.
+
 In handlers:
 
 ```go
@@ -104,6 +121,7 @@ role, ok := goauth.RoleFromContext(c)
 | `ResetURL` | **required** | builds the emailed link |
 | `ResetEmail` | English copy | override for another language |
 | `Skipper` | none | your own public routes |
+| `Optional` | none | public routes that still load a valid session |
 | `OnSignup` | none | runs in the signup transaction |
 
 ## What it deliberately does not do

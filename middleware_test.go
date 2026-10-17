@@ -359,3 +359,125 @@ func TestRequireRole_RejectsMissingRole(t *testing.T) {
 		t.Fatalf("expected 403 when no role is on the context, got %d", rec.Code)
 	}
 }
+
+// optionalAuth builds an Auth whose every route is optional, which is all
+// these tests need: which routes are optional is the consumer's call.
+func optionalAuth(t *testing.T, mock pgxmock.PgxPoolIface) *Auth {
+	t.Helper()
+	return newAuth(t, mock, Config{
+		Optional: func(c *echo.Context) bool { return true },
+	})
+}
+
+// runOptional runs RequireAuth over one request and reports the status and
+// whichever user id reached the handler.
+func runOptional(t *testing.T, a *Auth, token string) (int, uuid.UUID, bool) {
+	t.Helper()
+
+	c, rec := requestContext(t, "session_token", token)
+
+	var gotUserID uuid.UUID
+	var gotOK bool
+	handler := a.RequireAuth()(func(c *echo.Context) error {
+		gotUserID, gotOK = UserIDFromContext(c)
+		return c.NoContent(http.StatusOK)
+	})
+
+	if err := handler(c); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	return rec.Code, gotUserID, gotOK
+}
+
+// An optional route is public, but a valid session is still loaded: that is
+// what lets an owner see their own private records on a page anyone can open.
+func TestRequireAuth_OptionalLoadsValidSession(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+
+	mock.ExpectQuery("SELECT sessions.id").
+		WithArgs("tok").
+		WillReturnRows(sessionRow(tid(7), "tok", "user", time.Now().Add(time.Hour)))
+
+	code, userID, ok := runOptional(t, optionalAuth(t, mock), "tok")
+
+	if code != http.StatusOK || !ok || userID != tid(7) {
+		t.Fatalf("expected 200 as user %s, got %d as %s (ok=%v)", tid(7), code, userID, ok)
+	}
+}
+
+func TestRequireAuth_OptionalWithoutCookieIsAnonymous(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+
+	code, _, ok := runOptional(t, optionalAuth(t, mock), "")
+
+	if code != http.StatusOK || ok {
+		t.Fatalf("expected an anonymous 200, got %d (ok=%v)", code, ok)
+	}
+}
+
+// A stale cookie must not lock a visitor out of a public page: an unknown or
+// expired session falls back to anonymous instead of answering 401.
+func TestRequireAuth_OptionalWithStaleSessionIsAnonymous(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect func(mock pgxmock.PgxPoolIface)
+	}{
+		{"unknown token", func(mock pgxmock.PgxPoolIface) {
+			mock.ExpectQuery("SELECT sessions.id").
+				WithArgs("tok").
+				WillReturnError(pgx.ErrNoRows)
+		}},
+		{"expired session", func(mock pgxmock.PgxPoolIface) {
+			mock.ExpectQuery("SELECT sessions.id").
+				WithArgs("tok").
+				WillReturnRows(sessionRow(tid(7), "tok", "user", time.Now().Add(-time.Hour)))
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
+			}
+			defer mock.Close()
+
+			tt.expect(mock)
+
+			code, _, ok := runOptional(t, optionalAuth(t, mock), "tok")
+
+			if code != http.StatusOK || ok {
+				t.Fatalf("expected an anonymous 200, got %d (ok=%v)", code, ok)
+			}
+		})
+	}
+}
+
+// A database failure is not a missing session: serving the page anonymously
+// would hide the owner's own records without saying why.
+func TestRequireAuth_OptionalDatabaseErrorIs500(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+
+	mock.ExpectQuery("SELECT sessions.id").
+		WithArgs("tok").
+		WillReturnError(errors.New("connection refused"))
+
+	code, _, _ := runOptional(t, optionalAuth(t, mock), "tok")
+
+	if code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for a database failure, got %d", code)
+	}
+}
