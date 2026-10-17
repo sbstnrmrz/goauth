@@ -19,6 +19,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v5"
@@ -79,7 +80,7 @@ type Config struct {
 
 	// OnSignup runs inside the transaction that creates the user and account,
 	// before commit. A non-nil error rolls the whole signup back.
-	OnSignup func(ctx context.Context, tx pgx.Tx, userID int64) error
+	OnSignup func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
 }
 
 // Auth is the configured module. Build it with New and keep one per process.

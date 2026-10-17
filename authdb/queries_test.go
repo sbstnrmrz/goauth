@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pashagolub/pgxmock/v5"
 )
@@ -27,7 +28,7 @@ func TestGetSessionByToken_EmbedsSessionAndRole(t *testing.T) {
 			"id", "token", "user_id", "expires_at", "ip_address",
 			"user_agent", "created_at", "updated_at", "role",
 		}).AddRow(
-			int64(1), "tok", int64(7),
+			uuid.UUID{15: 1}, "tok", uuid.UUID{15: 7},
 			pgtype.Timestamptz{Time: expiresAt, Valid: true},
 			pgtype.Text{}, pgtype.Text{},
 			pgtype.Timestamptz{}, pgtype.Timestamptz{}, "admin",
@@ -38,8 +39,8 @@ func TestGetSessionByToken_EmbedsSessionAndRole(t *testing.T) {
 		t.Fatalf("GetSessionByToken returned error: %v", err)
 	}
 
-	if row.Session.UserID != 7 {
-		t.Fatalf("expected user id 7, got %d", row.Session.UserID)
+	if row.Session.UserID != (uuid.UUID{15: 7}) {
+		t.Fatalf("expected user id 7, got %s", row.Session.UserID)
 	}
 
 	if row.Role != "admin" {

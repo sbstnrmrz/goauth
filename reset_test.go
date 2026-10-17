@@ -50,7 +50,7 @@ func verificationRow(identifier, value string, expiresAt time.Time) *pgxmock.Row
 	return pgxmock.NewRows([]string{
 		"id", "identifier", "value", "expires_at", "created_at", "updated_at",
 	}).AddRow(
-		int64(1), identifier, value,
+		tid(1), identifier, value,
 		pgtype.Timestamptz{Time: expiresAt, Valid: true},
 		pgtype.Timestamptz{}, pgtype.Timestamptz{},
 	)
@@ -77,16 +77,16 @@ func TestForgotPassword_SendsResetLink(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
 		WithArgs("user@example.com", "credential").
-		WillReturnRows(accountRow(7, "irrelevant"))
+		WillReturnRows(accountRow(tid(7), "irrelevant"))
 	mock.ExpectQuery("SELECT (.+) FROM users").
-		WithArgs(int64(7)).
-		WillReturnRows(userRow(7, "Ada", "user@example.com", "user"))
+		WithArgs(tid(7)).
+		WillReturnRows(userRow(tid(7), "Ada", "user@example.com", "user"))
 	mock.ExpectExec("DELETE FROM verifications").
-		WithArgs("7").
+		WithArgs(tid(7).String()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectQuery("INSERT INTO verifications").
-		WithArgs(pgxmock.AnyArg(), "7", pgxmock.AnyArg()).
-		WillReturnRows(verificationRow("password-reset:hash", "7", time.Now().Add(time.Hour)))
+		WithArgs(pgxmock.AnyArg(), tid(7).String(), pgxmock.AnyArg()).
+		WillReturnRows(verificationRow("password-reset:hash", tid(7).String(), time.Now().Add(time.Hour)))
 
 	sender := &recordingSender{}
 	a := newAuth(t, mock, Config{Mailer: sender})
@@ -128,16 +128,16 @@ func TestForgotPassword_StoresOnlyTokenHash(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
 		WithArgs("user@example.com", "credential").
-		WillReturnRows(accountRow(7, "irrelevant"))
+		WillReturnRows(accountRow(tid(7), "irrelevant"))
 	mock.ExpectQuery("SELECT (.+) FROM users").
-		WithArgs(int64(7)).
-		WillReturnRows(userRow(7, "Ada", "user@example.com", "user"))
+		WithArgs(tid(7)).
+		WillReturnRows(userRow(tid(7), "Ada", "user@example.com", "user"))
 	mock.ExpectExec("DELETE FROM verifications").
-		WithArgs("7").
+		WithArgs(tid(7).String()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectQuery("INSERT INTO verifications").
-		WithArgs(capturingArg{got: &storedIdentifier}, "7", pgxmock.AnyArg()).
-		WillReturnRows(verificationRow("password-reset:hash", "7", time.Now().Add(time.Hour)))
+		WithArgs(capturingArg{got: &storedIdentifier}, tid(7).String(), pgxmock.AnyArg()).
+		WillReturnRows(verificationRow("password-reset:hash", tid(7).String(), time.Now().Add(time.Hour)))
 
 	sender := &recordingSender{}
 	a := newAuth(t, mock, Config{Mailer: sender})
@@ -212,19 +212,19 @@ func TestForgotPassword_UsesConfiguredResetURL(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
 		WithArgs("user@example.test", "credential").
-		WillReturnRows(accountRow(7, hashed))
+		WillReturnRows(accountRow(tid(7), hashed))
 	mock.ExpectQuery("SELECT (.+) FROM users").
-		WithArgs(int64(7)).
-		WillReturnRows(userRow(7, "User", "user@example.test", "user"))
+		WithArgs(tid(7)).
+		WillReturnRows(userRow(tid(7), "User", "user@example.test", "user"))
 	mock.ExpectExec("DELETE FROM verifications").
-		WithArgs("7").
+		WithArgs(tid(7).String()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectQuery("INSERT INTO verifications").
-		WithArgs(pgxmock.AnyArg(), "7", pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), tid(7).String(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "identifier", "value", "expires_at", "created_at", "updated_at",
 		}).AddRow(
-			int64(1), "password-reset:abc", "7",
+			tid(1), "password-reset:abc", tid(7).String(),
 			pgtype.Timestamptz{Time: time.Now().Add(time.Minute), Valid: true},
 			pgtype.Timestamptz{}, pgtype.Timestamptz{},
 		))
@@ -267,19 +267,19 @@ func TestForgotPassword_UsesConfiguredEmailCopy(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
 		WithArgs("user@example.test", "credential").
-		WillReturnRows(accountRow(7, hashed))
+		WillReturnRows(accountRow(tid(7), hashed))
 	mock.ExpectQuery("SELECT (.+) FROM users").
-		WithArgs(int64(7)).
-		WillReturnRows(userRow(7, "User", "user@example.test", "user"))
+		WithArgs(tid(7)).
+		WillReturnRows(userRow(tid(7), "User", "user@example.test", "user"))
 	mock.ExpectExec("DELETE FROM verifications").
-		WithArgs("7").
+		WithArgs(tid(7).String()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectQuery("INSERT INTO verifications").
-		WithArgs(pgxmock.AnyArg(), "7", pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), tid(7).String(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "identifier", "value", "expires_at", "created_at", "updated_at",
 		}).AddRow(
-			int64(1), "password-reset:abc", "7",
+			tid(1), "password-reset:abc", tid(7).String(),
 			pgtype.Timestamptz{Time: time.Now().Add(time.Minute), Valid: true},
 			pgtype.Timestamptz{}, pgtype.Timestamptz{},
 		))
@@ -351,7 +351,7 @@ func TestVerifyResetToken_ValidTokenIsNotConsumed(t *testing.T) {
 	// a DELETE, which is what keeps verification non-destructive.
 	mock.ExpectQuery("SELECT (.+) FROM verifications").
 		WithArgs(identifier).
-		WillReturnRows(verificationRow(identifier, "7", time.Now().Add(time.Hour)))
+		WillReturnRows(verificationRow(identifier, tid(7).String(), time.Now().Add(time.Hour)))
 
 	a := newAuth(t, mock, Config{})
 
@@ -403,7 +403,7 @@ func TestVerifyResetToken_ExpiredTokenIsCleanedUp(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM verifications").
 		WithArgs(identifier).
-		WillReturnRows(verificationRow(identifier, "7", time.Now().Add(-time.Minute)))
+		WillReturnRows(verificationRow(identifier, tid(7).String(), time.Now().Add(-time.Minute)))
 	mock.ExpectExec("DELETE FROM verifications").
 		WithArgs(identifier).
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
@@ -479,7 +479,7 @@ func TestResetPassword_ExpiredToken(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM verifications").
 		WithArgs(identifier).
-		WillReturnRows(verificationRow(identifier, "7", time.Now().Add(-time.Minute)))
+		WillReturnRows(verificationRow(identifier, tid(7).String(), time.Now().Add(-time.Minute)))
 	mock.ExpectExec("DELETE FROM verifications").
 		WithArgs(identifier).
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
@@ -563,7 +563,7 @@ func TestResetPassword_AlreadyConsumedToken(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM verifications").
 		WithArgs(identifier).
-		WillReturnRows(verificationRow(identifier, "7", time.Now().Add(time.Hour)))
+		WillReturnRows(verificationRow(identifier, tid(7).String(), time.Now().Add(time.Hour)))
 	// A concurrent redemption won the race, so the claim deletes nothing.
 	mock.ExpectExec("DELETE FROM verifications").
 		WithArgs(identifier).
@@ -594,15 +594,15 @@ func TestResetPassword_UpdatesPasswordAndClearsSessions(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM verifications").
 		WithArgs(identifier).
-		WillReturnRows(verificationRow(identifier, "7", time.Now().Add(time.Hour)))
+		WillReturnRows(verificationRow(identifier, tid(7).String(), time.Now().Add(time.Hour)))
 	mock.ExpectExec("DELETE FROM verifications").
 		WithArgs(identifier).
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 	mock.ExpectExec("UPDATE accounts").
-		WithArgs(pgxmock.AnyArg(), int64(7), "credential").
+		WithArgs(pgxmock.AnyArg(), tid(7), "credential").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectExec("DELETE FROM sessions").
-		WithArgs(int64(7)).
+		WithArgs(tid(7)).
 		WillReturnResult(pgxmock.NewResult("DELETE", 2))
 
 	a := newAuth(t, mock, Config{})

@@ -8,6 +8,7 @@ package authdb
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -18,7 +19,7 @@ RETURNING id, user_id, provider_id, account_id, password, access_token, refresh_
 `
 
 type CreateAccountParams struct {
-	UserID     int64       `json:"user_id"`
+	UserID     uuid.UUID   `json:"user_id"`
 	ProviderID string      `json:"provider_id"`
 	AccountID  string      `json:"account_id"`
 	Password   pgtype.Text `json:"password"`
@@ -112,8 +113,8 @@ WHERE user_id = $1 AND provider_id = $2
 `
 
 type GetAccountByUserIDParams struct {
-	UserID     int64  `json:"user_id"`
-	ProviderID string `json:"provider_id"`
+	UserID     uuid.UUID `json:"user_id"`
+	ProviderID string    `json:"provider_id"`
 }
 
 func (q *Queries) GetAccountByUserID(ctx context.Context, arg GetAccountByUserIDParams) (Account, error) {
@@ -141,7 +142,7 @@ SELECT id, name, email, image, role, created_at, updated_at FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
@@ -164,7 +165,7 @@ WHERE user_id = $2 AND provider_id = $3
 
 type UpdateAccountPasswordParams struct {
 	Password   pgtype.Text `json:"password"`
-	UserID     int64       `json:"user_id"`
+	UserID     uuid.UUID   `json:"user_id"`
 	ProviderID string      `json:"provider_id"`
 }
 

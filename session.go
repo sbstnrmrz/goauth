@@ -4,13 +4,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
 
 	"github.com/sbstnrmrz/goauth/authdb"
 )
 
-func (a *Auth) createSession(c *echo.Context, userID int64) (authdb.Session, error) {
+func (a *Auth) createSession(c *echo.Context, userID uuid.UUID) (authdb.Session, error) {
 	token, err := generateToken()
 	if err != nil {
 		return authdb.Session{}, err
@@ -64,7 +65,7 @@ const contextUserRoleKey = "user_role"
 // SetUserID and SetRole are how RequireAuth publishes the authenticated
 // identity onto the request context; handlers read it back with
 // UserIDFromContext and RoleFromContext.
-func SetUserID(c *echo.Context, userID int64) {
+func SetUserID(c *echo.Context, userID uuid.UUID) {
 	c.Set(contextUserIDKey, userID)
 }
 
@@ -72,8 +73,8 @@ func SetRole(c *echo.Context, role string) {
 	c.Set(contextUserRoleKey, role)
 }
 
-func UserIDFromContext(c *echo.Context) (int64, bool) {
-	userID, ok := c.Get(contextUserIDKey).(int64)
+func UserIDFromContext(c *echo.Context) (uuid.UUID, bool) {
+	userID, ok := c.Get(contextUserIDKey).(uuid.UUID)
 	return userID, ok
 }
 

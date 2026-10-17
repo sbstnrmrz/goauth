@@ -6,10 +6,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
 	"github.com/pashagolub/pgxmock/v5"
 )
+
+// tid builds a fixed id for tests: tid(7) is always the same UUID, so a
+// query argument can be matched against the id a row carried.
+func tid(n byte) uuid.UUID {
+	return uuid.UUID{15: n}
+}
 
 // newAuth builds an Auth over a mock pool with the given config, filling the
 // ResetURL every test needs but few care about.
@@ -30,12 +37,12 @@ func newAuth(t *testing.T, mock pgxmock.PgxPoolIface, cfg Config) *Auth {
 
 // sessionRow builds the row returned by GetSessionByToken, which joins the
 // session with its user's role.
-func sessionRow(userID int64, token, role string, expiresAt time.Time) *pgxmock.Rows {
+func sessionRow(userID uuid.UUID, token, role string, expiresAt time.Time) *pgxmock.Rows {
 	return pgxmock.NewRows([]string{
 		"id", "token", "user_id", "expires_at", "ip_address",
 		"user_agent", "created_at", "updated_at", "role",
 	}).AddRow(
-		int64(1), token, userID,
+		tid(1), token, userID,
 		pgtype.Timestamptz{Time: expiresAt, Valid: true},
 		pgtype.Text{}, pgtype.Text{},
 		pgtype.Timestamptz{}, pgtype.Timestamptz{}, role,
@@ -139,12 +146,12 @@ func TestCreateSession_StoresTokenAndSetsCookie(t *testing.T) {
 	defer mock.Close()
 
 	mock.ExpectQuery("INSERT INTO sessions").
-		WithArgs(pgxmock.AnyArg(), int64(7), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), tid(7), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "token", "user_id", "expires_at", "ip_address",
 			"user_agent", "created_at", "updated_at",
 		}).AddRow(
-			int64(1), "stored", int64(7),
+			tid(1), "stored", tid(7),
 			pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 			pgtype.Text{}, pgtype.Text{},
 			pgtype.Timestamptz{}, pgtype.Timestamptz{},
@@ -153,7 +160,7 @@ func TestCreateSession_StoresTokenAndSetsCookie(t *testing.T) {
 	a := newAuth(t, mock, Config{})
 	c, rec := requestContext(t, "session_token", "")
 
-	if _, err := a.createSession(c, 7); err != nil {
+	if _, err := a.createSession(c, tid(7)); err != nil {
 		t.Fatalf("createSession returned error: %v", err)
 	}
 
@@ -173,12 +180,12 @@ func TestContextAccessors_RoundTrip(t *testing.T) {
 		t.Fatal("expected no user id on a fresh context")
 	}
 
-	SetUserID(c, 7)
+	SetUserID(c, tid(7))
 	SetRole(c, "admin")
 
 	userID, ok := UserIDFromContext(c)
-	if !ok || userID != 7 {
-		t.Fatalf("expected user id 7, got %d (ok=%v)", userID, ok)
+	if !ok || userID != tid(7) {
+		t.Fatalf("expected user id %s, got %s (ok=%v)", tid(7), userID, ok)
 	}
 
 	role, ok := RoleFromContext(c)

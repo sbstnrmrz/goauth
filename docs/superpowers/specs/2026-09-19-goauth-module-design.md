@@ -103,7 +103,7 @@ type Config struct {
     ResetURL      func(token string) string
     ResetEmail    func(name, link string, expiry time.Duration) (subject, text, html string)
     Skipper       func(c *echo.Context) bool
-    OnSignup      func(ctx context.Context, tx pgx.Tx, userID int64) error
+    OnSignup      func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
 }
 
 // DB is the pool seen through the methods this module needs: the three sqlc
@@ -193,6 +193,7 @@ The design above was approved before implementation; these are the decisions tha
 - **`ForgotPassword` guards a nil `Mailer`**, before the account lookup, so a misconfigured deployment does not write reset rows it can never deliver. The original could assume a mailer was present.
 - **The DDL moved from `migrations/` to `schema/`**, and `cmd/authschema` became `cmd/goauth` with a `generate` subcommand, so `go install` yields a binary with a meaningful name rather than `authschema` or a generic `generate`.
 - **The prefix exemption gained its boundary check** (see "Public API"). It shipped as a bare `strings.HasPrefix` and was caught in the final whole-branch review.
+- **Ids are UUIDv7, not `BIGINT` identities** (2026-10-17). The first consumer, CuatroScore, exposes user ids in public URLs (`/profile/:id`), where a sequential id can be counted and walked. Every table keys on `UUID DEFAULT uuidv7()` and every id in the Go API is a `uuid.UUID`. That makes PostgreSQL 18 a requirement, and means a consumer still on `BIGINT` ids — the raffle API — migrates its keys before adopting the module.
 
 ## Open questions
 

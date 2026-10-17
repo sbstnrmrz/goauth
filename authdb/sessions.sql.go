@@ -8,6 +8,7 @@ package authdb
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -19,7 +20,7 @@ RETURNING id, token, user_id, expires_at, ip_address, user_agent, created_at, up
 
 type CreateSessionParams struct {
 	Token     string             `json:"token"`
-	UserID    int64              `json:"user_id"`
+	UserID    uuid.UUID          `json:"user_id"`
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	IpAddress pgtype.Text        `json:"ip_address"`
 	UserAgent pgtype.Text        `json:"user_agent"`
@@ -62,7 +63,7 @@ DELETE FROM sessions
 WHERE user_id = $1
 `
 
-func (q *Queries) DeleteSessionsByUserID(ctx context.Context, userID int64) error {
+func (q *Queries) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteSessionsByUserID, userID)
 	return err
 }

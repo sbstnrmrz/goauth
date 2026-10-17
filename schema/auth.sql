@@ -7,9 +7,14 @@
 -- re-run an applied migration, so the checked-in DDL would stop describing the
 -- live database. A schema change in goauth means regenerating AND hand-writing
 -- the matching ALTER migration.
+--
+-- Ids are UUIDv7: a sequential id can be counted and walked in public URLs
+-- (/profile/:id), and v7 leads with a timestamp, so the index still grows in
+-- order. uuidv7() is built into PostgreSQL 18; older servers need an extension
+-- or a client-generated id.
 
 CREATE TABLE users (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     image TEXT,
@@ -19,8 +24,8 @@ CREATE TABLE users (
 );
 
 CREATE TABLE accounts (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id BIGINT NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    user_id UUID NOT NULL,
     provider_id TEXT NOT NULL,
     account_id TEXT NOT NULL,
     password TEXT,
@@ -41,9 +46,9 @@ CREATE TABLE accounts (
 CREATE INDEX accounts_user_id_idx ON accounts (user_id);
 
 CREATE TABLE sessions (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     token TEXT NOT NULL UNIQUE,
-    user_id BIGINT NOT NULL,
+    user_id UUID NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     ip_address TEXT,
     user_agent TEXT,
@@ -59,7 +64,7 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_id_idx ON sessions (user_id);
 
 CREATE TABLE verifications (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     identifier TEXT NOT NULL UNIQUE,
     value TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,

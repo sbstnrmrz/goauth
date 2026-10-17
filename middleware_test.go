@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/pashagolub/pgxmock/v5"
@@ -21,12 +22,12 @@ func TestRequireAuth_PublishesUserAndRole(t *testing.T) {
 
 	mock.ExpectQuery("SELECT sessions.id").
 		WithArgs("tok").
-		WillReturnRows(sessionRow(7, "tok", "admin", time.Now().Add(time.Hour)))
+		WillReturnRows(sessionRow(tid(7), "tok", "admin", time.Now().Add(time.Hour)))
 
 	a := newAuth(t, mock, Config{})
 	c, _ := requestContext(t, "session_token", "tok")
 
-	var gotUserID int64
+	var gotUserID uuid.UUID
 	var gotRole string
 	handler := a.RequireAuth()(func(c *echo.Context) error {
 		gotUserID, _ = UserIDFromContext(c)
@@ -38,8 +39,8 @@ func TestRequireAuth_PublishesUserAndRole(t *testing.T) {
 		t.Fatalf("handler returned error: %v", err)
 	}
 
-	if gotUserID != 7 || gotRole != "admin" {
-		t.Fatalf("expected user 7 with role admin, got %d / %q", gotUserID, gotRole)
+	if gotUserID != tid(7) || gotRole != "admin" {
+		t.Fatalf("expected user %s with role admin, got %s / %q", tid(7), gotUserID, gotRole)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -79,7 +80,7 @@ func TestRequireAuth_RejectsExpiredSession(t *testing.T) {
 
 	mock.ExpectQuery("SELECT sessions.id").
 		WithArgs("tok").
-		WillReturnRows(sessionRow(7, "tok", "user", time.Now().Add(-time.Hour)))
+		WillReturnRows(sessionRow(tid(7), "tok", "user", time.Now().Add(-time.Hour)))
 
 	a := newAuth(t, mock, Config{})
 	c, rec := requestContext(t, "session_token", "tok")

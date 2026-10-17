@@ -5,12 +5,13 @@
 package authdb
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Account struct {
-	ID                    int64              `json:"id"`
-	UserID                int64              `json:"user_id"`
+	ID                    uuid.UUID          `json:"id"`
+	UserID                uuid.UUID          `json:"user_id"`
 	ProviderID            string             `json:"provider_id"`
 	AccountID             string             `json:"account_id"`
 	Password              pgtype.Text        `json:"password"`
@@ -24,9 +25,9 @@ type Account struct {
 }
 
 type Session struct {
-	ID        int64              `json:"id"`
+	ID        uuid.UUID          `json:"id"`
 	Token     string             `json:"token"`
-	UserID    int64              `json:"user_id"`
+	UserID    uuid.UUID          `json:"user_id"`
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	IpAddress pgtype.Text        `json:"ip_address"`
 	UserAgent pgtype.Text        `json:"user_agent"`
@@ -35,7 +36,7 @@ type Session struct {
 }
 
 type User struct {
-	ID        int64              `json:"id"`
+	ID        uuid.UUID          `json:"id"`
 	Name      string             `json:"name"`
 	Email     string             `json:"email"`
 	Image     pgtype.Text        `json:"image"`
@@ -45,7 +46,7 @@ type User struct {
 }
 
 type Verification struct {
-	ID         int64              `json:"id"`
+	ID         uuid.UUID          `json:"id"`
 	Identifier string             `json:"identifier"`
 	Value      string             `json:"value"`
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`

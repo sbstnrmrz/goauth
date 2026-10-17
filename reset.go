@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
@@ -72,7 +72,7 @@ func (a *Auth) ForgotPassword() echo.HandlerFunc {
 			return c.String(http.StatusInternalServerError, "failed to process request")
 		}
 
-		userID := strconv.FormatInt(user.ID, 10)
+		userID := user.ID.String()
 
 		// Requesting a new link invalidates any earlier one.
 		if err := a.q.DeleteUserResetTokens(ctx, userID); err != nil {
@@ -198,7 +198,7 @@ func (a *Auth) ResetPassword() echo.HandlerFunc {
 			return c.String(http.StatusBadRequest, "invalid or expired reset token")
 		}
 
-		userID, err := strconv.ParseInt(verification.Value, 10, 64)
+		userID, err := uuid.Parse(verification.Value)
 		if err != nil {
 			slog.Error("reset token has malformed user id", "error", err, "value", verification.Value)
 			return c.String(http.StatusInternalServerError, "failed to reset password")

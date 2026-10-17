@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -18,13 +19,13 @@ import (
 
 // accountRow builds the row returned by the account queries (GetAccountByEmail,
 // GetAccountByUserID).
-func accountRow(userID int64, hashedPassword string) *pgxmock.Rows {
+func accountRow(userID uuid.UUID, hashedPassword string) *pgxmock.Rows {
 	return pgxmock.NewRows([]string{
 		"id", "user_id", "provider_id", "account_id", "password",
 		"access_token", "refresh_token", "access_token_expires_at",
 		"refresh_token_expires_at", "scope", "created_at", "updated_at",
 	}).AddRow(
-		int64(1), userID, "credential", "user@example.test",
+		tid(1), userID, "credential", "user@example.test",
 		pgtype.Text{String: hashedPassword, Valid: true},
 		pgtype.Text{}, pgtype.Text{},
 		pgtype.Timestamptz{}, pgtype.Timestamptz{},
@@ -32,7 +33,7 @@ func accountRow(userID int64, hashedPassword string) *pgxmock.Rows {
 	)
 }
 
-func userRow(id int64, name, email, role string) *pgxmock.Rows {
+func userRow(id uuid.UUID, name, email, role string) *pgxmock.Rows {
 	return pgxmock.NewRows([]string{
 		"id", "name", "email", "image", "role", "created_at", "updated_at",
 	}).AddRow(
@@ -59,7 +60,7 @@ func serve(t *testing.T, handler echo.HandlerFunc, method, path, body string) (*
 
 // changePasswordContext builds the request/context pair ChangePassword expects,
 // optionally publishing an authenticated user id the way RequireAuth would.
-func changePasswordContext(t *testing.T, body string, userID int64, authenticated bool) (*echo.Context, *httptest.ResponseRecorder) {
+func changePasswordContext(t *testing.T, body string, userID uuid.UUID, authenticated bool) (*echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
 	req := httptest.NewRequest(http.MethodPatch, "/users/me/password", strings.NewReader(body))
@@ -81,7 +82,7 @@ func TestChangePassword_Unauthenticated(t *testing.T) {
 	defer mock.Close()
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"new12345"}`, 0, false)
+	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"new12345"}`, uuid.Nil, false)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -115,7 +116,7 @@ func TestChangePassword_MissingFields(t *testing.T) {
 			defer mock.Close()
 
 			a := newAuth(t, mock, Config{})
-			c, rec := changePasswordContext(t, tc.body, 1, true)
+			c, rec := changePasswordContext(t, tc.body, tid(1), true)
 
 			if err := a.ChangePassword()(c); err != nil {
 				t.Fatalf("handler returned error: %v", err)
@@ -140,7 +141,7 @@ func TestChangePassword_NewPasswordTooShort(t *testing.T) {
 	defer mock.Close()
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"short"}`, 1, true)
+	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"short"}`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -163,7 +164,7 @@ func TestChangePassword_InvalidJSON(t *testing.T) {
 	defer mock.Close()
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `not json`, 1, true)
+	c, rec := changePasswordContext(t, `not json`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -186,11 +187,11 @@ func TestChangePassword_NoCredentialAccount(t *testing.T) {
 	defer mock.Close()
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
-		WithArgs(int64(1), "credential").
+		WithArgs(tid(1), "credential").
 		WillReturnError(pgx.ErrNoRows)
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"new12345"}`, 1, true)
+	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"new12345"}`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -213,11 +214,11 @@ func TestChangePassword_FetchAccountDatabaseError(t *testing.T) {
 	defer mock.Close()
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
-		WithArgs(int64(1), "credential").
+		WithArgs(tid(1), "credential").
 		WillReturnError(pgx.ErrTxClosed)
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"new12345"}`, 1, true)
+	c, rec := changePasswordContext(t, `{"currentPassword":"old12345","newPassword":"new12345"}`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -245,11 +246,11 @@ func TestChangePassword_WrongCurrentPassword(t *testing.T) {
 	}
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
-		WithArgs(int64(1), "credential").
-		WillReturnRows(accountRow(1, hashed))
+		WithArgs(tid(1), "credential").
+		WillReturnRows(accountRow(tid(1), hashed))
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"wrong-password","newPassword":"new12345"}`, 1, true)
+	c, rec := changePasswordContext(t, `{"currentPassword":"wrong-password","newPassword":"new12345"}`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -277,15 +278,15 @@ func TestChangePassword_Success(t *testing.T) {
 	}
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
-		WithArgs(int64(1), "credential").
-		WillReturnRows(accountRow(1, hashed))
+		WithArgs(tid(1), "credential").
+		WillReturnRows(accountRow(tid(1), hashed))
 
 	mock.ExpectExec("UPDATE accounts").
-		WithArgs(pgxmock.AnyArg(), int64(1), "credential").
+		WithArgs(pgxmock.AnyArg(), tid(1), "credential").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"correct-password","newPassword":"brand-new-password"}`, 1, true)
+	c, rec := changePasswordContext(t, `{"currentPassword":"correct-password","newPassword":"brand-new-password"}`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -313,15 +314,15 @@ func TestChangePassword_UpdateDatabaseError(t *testing.T) {
 	}
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
-		WithArgs(int64(1), "credential").
-		WillReturnRows(accountRow(1, hashed))
+		WithArgs(tid(1), "credential").
+		WillReturnRows(accountRow(tid(1), hashed))
 
 	mock.ExpectExec("UPDATE accounts").
-		WithArgs(pgxmock.AnyArg(), int64(1), "credential").
+		WithArgs(pgxmock.AnyArg(), tid(1), "credential").
 		WillReturnError(pgx.ErrTxClosed)
 
 	a := newAuth(t, mock, Config{})
-	c, rec := changePasswordContext(t, `{"currentPassword":"correct-password","newPassword":"brand-new-password"}`, 1, true)
+	c, rec := changePasswordContext(t, `{"currentPassword":"correct-password","newPassword":"brand-new-password"}`, tid(1), true)
 
 	if err := a.ChangePassword()(c); err != nil {
 		t.Fatalf("handler returned error: %v", err)
@@ -350,7 +351,7 @@ func TestLogin_WrongPasswordIsUnauthorized(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
 		WithArgs("user@example.test", "credential").
-		WillReturnRows(accountRow(7, hashed))
+		WillReturnRows(accountRow(tid(7), hashed))
 
 	a := newAuth(t, mock, Config{})
 	_, rec := serve(t, a.Login(), http.MethodPost, "/auth/login",
@@ -404,17 +405,17 @@ func TestLogin_SuccessSetsCookie(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM accounts").
 		WithArgs("user@example.test", "credential").
-		WillReturnRows(accountRow(7, hashed))
+		WillReturnRows(accountRow(tid(7), hashed))
 	mock.ExpectQuery("SELECT (.+) FROM users").
-		WithArgs(int64(7)).
-		WillReturnRows(userRow(7, "User", "user@example.test", "user"))
+		WithArgs(tid(7)).
+		WillReturnRows(userRow(tid(7), "User", "user@example.test", "user"))
 	mock.ExpectQuery("INSERT INTO sessions").
-		WithArgs(pgxmock.AnyArg(), int64(7), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), tid(7), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "token", "user_id", "expires_at", "ip_address",
 			"user_agent", "created_at", "updated_at",
 		}).AddRow(
-			int64(1), "stored", int64(7),
+			tid(1), "stored", tid(7),
 			pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
 			pgtype.Text{}, pgtype.Text{},
 			pgtype.Timestamptz{}, pgtype.Timestamptz{},
@@ -471,14 +472,14 @@ func TestSignup_OnSignupErrorRollsBack(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO users").
 		WithArgs("User", "user@example.test", pgxmock.AnyArg()).
-		WillReturnRows(userRow(7, "User", "user@example.test", "user"))
+		WillReturnRows(userRow(tid(7), "User", "user@example.test", "user"))
 	mock.ExpectQuery("INSERT INTO accounts").
-		WithArgs(int64(7), "credential", "user@example.test", pgxmock.AnyArg()).
-		WillReturnRows(accountRow(7, "hashed"))
+		WithArgs(tid(7), "credential", "user@example.test", pgxmock.AnyArg()).
+		WillReturnRows(accountRow(tid(7), "hashed"))
 	mock.ExpectRollback()
 
 	a := newAuth(t, mock, Config{
-		OnSignup: func(ctx context.Context, tx pgx.Tx, userID int64) error {
+		OnSignup: func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
 			return errors.New("consumer said no")
 		},
 	})
