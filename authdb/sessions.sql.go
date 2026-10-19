@@ -69,14 +69,15 @@ func (q *Queries) DeleteSessionsByUserID(ctx context.Context, userID uuid.UUID) 
 }
 
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT sessions.id, sessions.token, sessions.user_id, sessions.expires_at, sessions.ip_address, sessions.user_agent, sessions.created_at, sessions.updated_at, users.role FROM sessions
+SELECT sessions.id, sessions.token, sessions.user_id, sessions.expires_at, sessions.ip_address, sessions.user_agent, sessions.created_at, sessions.updated_at, users.role, users.disabled_at FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.token = $1
 `
 
 type GetSessionByTokenRow struct {
-	Session Session `json:"session"`
-	Role    string  `json:"role"`
+	Session    Session            `json:"session"`
+	Role       string             `json:"role"`
+	DisabledAt pgtype.Timestamptz `json:"disabled_at"`
 }
 
 func (q *Queries) GetSessionByToken(ctx context.Context, token string) (GetSessionByTokenRow, error) {
@@ -92,6 +93,7 @@ func (q *Queries) GetSessionByToken(ctx context.Context, token string) (GetSessi
 		&i.Session.CreatedAt,
 		&i.Session.UpdatedAt,
 		&i.Role,
+		&i.DisabledAt,
 	)
 	return i, err
 }

@@ -26,12 +26,13 @@ func TestGetSessionByToken_EmbedsSessionAndRole(t *testing.T) {
 		WithArgs("tok").
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "token", "user_id", "expires_at", "ip_address",
-			"user_agent", "created_at", "updated_at", "role",
+			"user_agent", "created_at", "updated_at", "role", "disabled_at",
 		}).AddRow(
 			uuid.UUID{15: 1}, "tok", uuid.UUID{15: 7},
 			pgtype.Timestamptz{Time: expiresAt, Valid: true},
 			pgtype.Text{}, pgtype.Text{},
 			pgtype.Timestamptz{}, pgtype.Timestamptz{}, "admin",
+			pgtype.Timestamptz{},
 		))
 
 	row, err := New(mock).GetSessionByToken(context.Background(), "tok")

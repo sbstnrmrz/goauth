@@ -40,12 +40,13 @@ func newAuth(t *testing.T, mock pgxmock.PgxPoolIface, cfg Config) *Auth {
 func sessionRow(userID uuid.UUID, token, role string, expiresAt time.Time) *pgxmock.Rows {
 	return pgxmock.NewRows([]string{
 		"id", "token", "user_id", "expires_at", "ip_address",
-		"user_agent", "created_at", "updated_at", "role",
+		"user_agent", "created_at", "updated_at", "role", "disabled_at",
 	}).AddRow(
 		tid(1), token, userID,
 		pgtype.Timestamptz{Time: expiresAt, Valid: true},
 		pgtype.Text{}, pgtype.Text{},
 		pgtype.Timestamptz{}, pgtype.Timestamptz{}, role,
+		pgtype.Timestamptz{},
 	)
 }
 

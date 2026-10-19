@@ -4,7 +4,7 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetSessionByToken :one
-SELECT sqlc.embed(sessions), users.role FROM sessions
+SELECT sqlc.embed(sessions), users.role, users.disabled_at FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.token = $1;
 

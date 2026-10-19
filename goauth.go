@@ -1,4 +1,4 @@
-// Package goauth is email-and-password authentication for Go services on
+// Package goauth is email- or username-and-password authentication for Go services on
 // PostgreSQL, built on pgx/v5 and Echo v5. It owns four tables: accounts,
 // users, sessions and verifications.
 //
@@ -17,6 +17,7 @@ package goauth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,16 @@ type Sender interface {
 	Send(ctx context.Context, to, subject, plainText, html string) error
 }
 
+// LoginField is the identifier a user signs in with.
+type LoginField string
+
+const (
+	// LoginEmail signs in with the email address. It is the default.
+	LoginEmail LoginField = "email"
+	// LoginUsername signs in with users.username. The email stays optional.
+	LoginUsername LoginField = "username"
+)
+
 // Config holds everything the original package kept in package-level vars and
 // os.Getenv calls. As fields they are testable and differ per consumer.
 type Config struct {
@@ -58,6 +69,18 @@ type Config struct {
 	// CookieName defaults to "session_token".
 	CookieName string
 
+	// LoginField picks what Signup and Login identify a user by. Defaults to
+	// LoginEmail.
+	LoginField LoginField
+
+	// DisableSignup leaves POST /signup unmounted, for a deployment where users
+	// are only created by an administrator through Auth.CreateUser.
+	DisableSignup bool
+
+	// DisableReset leaves the emailed password reset routes unmounted. A
+	// consumer without them resets passwords itself through Auth.SetPassword.
+	DisableReset bool
+
 	// MinPassword is the shortest password accepted on signup, change and
 	// reset. Defaults to 8.
 	MinPassword int
@@ -66,8 +89,9 @@ type Config struct {
 	// routes are mounted; ForgotPassword answers 500 without it.
 	Mailer Sender
 
-	// ResetURL builds the link emailed to a user, given a raw token. Required:
-	// only the consumer knows its front end. The token is URL-escaped already.
+	// ResetURL builds the link emailed to a user, given a raw token. Required
+	// unless DisableReset is set: only the consumer knows its front end. The
+	// token is URL-escaped already.
 	ResetURL func(token string) string
 
 	// ResetEmail builds the reset message. Defaults to English copy; override
@@ -107,7 +131,15 @@ func New(db DB, cfg Config) (*Auth, error) {
 		return nil, errors.New("goauth: DB is required")
 	}
 
-	if cfg.ResetURL == nil {
+	switch cfg.LoginField {
+	case "":
+		cfg.LoginField = LoginEmail
+	case LoginEmail, LoginUsername:
+	default:
+		return nil, fmt.Errorf("goauth: unknown Config.LoginField %q", cfg.LoginField)
+	}
+
+	if cfg.ResetURL == nil && !cfg.DisableReset {
 		return nil, errors.New("goauth: Config.ResetURL is required")
 	}
 

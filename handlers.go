@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v5"
 
@@ -22,13 +21,15 @@ const credentialProvider = "credential"
 type SignupRequest struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 	Image    string `json:"image"`
 }
 
 // Signup creates a user and its credential account in one transaction, then
 // runs Config.OnSignup inside that same transaction so a consumer can add its
-// own rows. It deliberately does not sign the new user in.
+// own rows. It deliberately does not sign the new user in, and it never accepts
+// a role: new users get the default one.
 func (a *Auth) Signup() echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var req SignupRequest
@@ -36,7 +37,11 @@ func (a *Auth) Signup() echo.HandlerFunc {
 			return c.String(http.StatusBadRequest, "invalid request body")
 		}
 
-		if req.Name == "" || req.Email == "" || req.Password == "" {
+		if a.cfg.LoginField == LoginUsername {
+			if req.Username == "" || req.Password == "" {
+				return c.String(http.StatusBadRequest, "username and password are required")
+			}
+		} else if req.Name == "" || req.Email == "" || req.Password == "" {
 			return c.String(http.StatusBadRequest, "name, email and password are required")
 		}
 
@@ -49,12 +54,6 @@ func (a *Auth) Signup() echo.HandlerFunc {
 
 		ctx := c.Request().Context()
 
-		hashed, err := HashPassword(req.Password)
-		if err != nil {
-			slog.Error("failed to hash password", "error", err)
-			return c.String(http.StatusInternalServerError, "failed to create user")
-		}
-
 		tx, err := a.db.Begin(ctx)
 		if err != nil {
 			slog.Error("failed to begin transaction", "error", err)
@@ -62,29 +61,18 @@ func (a *Auth) Signup() echo.HandlerFunc {
 		}
 		defer tx.Rollback(ctx)
 
-		qtx := authdb.New(tx)
-
-		user, err := qtx.CreateUser(ctx, authdb.CreateUserParams{
-			Name:  req.Name,
-			Email: req.Email,
-			Image: pgtype.Text{String: req.Image, Valid: req.Image != ""},
+		user, err := a.CreateUser(ctx, tx, CreateUserParams{
+			Name:     req.Name,
+			Email:    req.Email,
+			Username: req.Username,
+			Image:    req.Image,
+			Password: req.Password,
 		})
 		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				return c.String(http.StatusConflict, "email is already in use")
+			if errors.Is(err, ErrIdentifierTaken) {
+				return c.String(http.StatusConflict, string(a.cfg.LoginField)+" is already in use")
 			}
 			slog.Error("failed to create user", "error", err)
-			return c.String(http.StatusInternalServerError, "failed to create user")
-		}
-
-		if _, err := qtx.CreateAccount(ctx, authdb.CreateAccountParams{
-			UserID:     user.ID,
-			ProviderID: credentialProvider,
-			AccountID:  user.Email,
-			Password:   pgtype.Text{String: hashed, Valid: true},
-		}); err != nil {
-			slog.Error("failed to create account", "error", err)
 			return c.String(http.StatusInternalServerError, "failed to create user")
 		}
 
@@ -106,11 +94,13 @@ func (a *Auth) Signup() echo.HandlerFunc {
 
 type LoginRequest struct {
 	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// Login answers the same 401 for an unknown email and a wrong password, so it
-// cannot be used to find out which addresses are registered.
+// Login answers the same 401 for an unknown identifier and a wrong password,
+// so it cannot be used to find out which accounts exist. The identifier is the
+// email or the username, per Config.LoginField.
 func (a *Auth) Login() echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		var req LoginRequest
@@ -118,32 +108,55 @@ func (a *Auth) Login() echo.HandlerFunc {
 			return c.String(http.StatusBadRequest, "invalid request body")
 		}
 
-		if req.Email == "" || req.Password == "" {
-			return c.String(http.StatusBadRequest, "email and password are required")
+		identifier := req.Email
+		if a.cfg.LoginField == LoginUsername {
+			identifier = req.Username
+		}
+
+		if identifier == "" || req.Password == "" {
+			return c.String(http.StatusBadRequest,
+				string(a.cfg.LoginField)+" and password are required")
 		}
 
 		ctx := c.Request().Context()
 
-		account, err := a.q.GetAccountByEmail(ctx, authdb.GetAccountByEmailParams{
-			AccountID:  req.Email,
-			ProviderID: credentialProvider,
-		})
+		var (
+			account authdb.Account
+			err     error
+		)
+		if a.cfg.LoginField == LoginUsername {
+			account, err = a.q.GetAccountByUsername(ctx, authdb.GetAccountByUsernameParams{
+				Username:   pgtype.Text{String: identifier, Valid: true},
+				ProviderID: credentialProvider,
+			})
+		} else {
+			account, err = a.q.GetAccountByEmail(ctx, authdb.GetAccountByEmailParams{
+				AccountID:  identifier,
+				ProviderID: credentialProvider,
+			})
+		}
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return c.String(http.StatusUnauthorized, "invalid email or password")
+				return c.String(http.StatusUnauthorized, "invalid "+string(a.cfg.LoginField)+" or password")
 			}
 			slog.Error("failed to fetch account", "error", err)
 			return c.String(http.StatusInternalServerError, "failed to log in")
 		}
 
 		if err := CheckPassword(req.Password, account.Password.String); err != nil {
-			return c.String(http.StatusUnauthorized, "invalid email or password")
+			return c.String(http.StatusUnauthorized, "invalid "+string(a.cfg.LoginField)+" or password")
 		}
 
 		user, err := a.q.GetUserByID(ctx, account.UserID)
 		if err != nil {
 			slog.Error("failed to fetch user", "error", err)
 			return c.String(http.StatusInternalServerError, "failed to log in")
+		}
+
+		// Checked after the password, so a disabled account is not revealed to
+		// someone who does not know it.
+		if user.DisabledAt.Valid {
+			return c.String(http.StatusForbidden, "account disabled")
 		}
 
 		if _, err := a.createSession(c, user.ID); err != nil {

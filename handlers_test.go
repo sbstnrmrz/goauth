@@ -35,9 +35,11 @@ func accountRow(userID uuid.UUID, hashedPassword string) *pgxmock.Rows {
 
 func userRow(id uuid.UUID, name, email, role string) *pgxmock.Rows {
 	return pgxmock.NewRows([]string{
-		"id", "name", "email", "image", "role", "created_at", "updated_at",
+		"id", "name", "email", "username", "image", "role", "disabled_at",
+		"created_at", "updated_at",
 	}).AddRow(
-		id, name, email, pgtype.Text{}, role,
+		id, name, pgtype.Text{String: email, Valid: email != ""}, pgtype.Text{},
+		pgtype.Text{}, role, pgtype.Timestamptz{},
 		pgtype.Timestamptz{}, pgtype.Timestamptz{},
 	)
 }
@@ -447,7 +449,7 @@ func TestSignup_DuplicateEmailIsConflict(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("User", "taken@example.test", pgxmock.AnyArg()).
+		WithArgs("User", pgtype.Text{String: "taken@example.test", Valid: true}, pgtype.Text{}, pgtype.Text{}, "").
 		WillReturnError(&pgconn.PgError{Code: "23505"})
 	mock.ExpectRollback()
 
@@ -471,7 +473,7 @@ func TestSignup_OnSignupErrorRollsBack(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("User", "user@example.test", pgxmock.AnyArg()).
+		WithArgs("User", pgtype.Text{String: "user@example.test", Valid: true}, pgtype.Text{}, pgtype.Text{}, "").
 		WillReturnRows(userRow(tid(7), "User", "user@example.test", "user"))
 	mock.ExpectQuery("INSERT INTO accounts").
 		WithArgs(tid(7), "credential", "user@example.test", pgxmock.AnyArg()).

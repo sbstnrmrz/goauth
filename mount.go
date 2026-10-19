@@ -23,10 +23,14 @@ func (a *Auth) Mount(e *echo.Echo, prefix string) {
 
 	g := e.Group(prefix)
 
-	g.POST("/signup", a.Signup())
+	if !a.cfg.DisableSignup {
+		g.POST("/signup", a.Signup())
+	}
 	g.POST("/login", a.Login())
 	g.POST("/logout", a.Logout())
-	g.POST("/forgot-password", a.ForgotPassword())
-	g.POST("/reset-password", a.ResetPassword())
-	g.POST("/reset-password/verify", a.VerifyResetToken())
+	if !a.cfg.DisableReset {
+		g.POST("/forgot-password", a.ForgotPassword())
+		g.POST("/reset-password", a.ResetPassword())
+		g.POST("/reset-password/verify", a.VerifyResetToken())
+	}
 }

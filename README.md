@@ -113,21 +113,46 @@ role, ok := goauth.RoleFromContext(c)
 | Field | Default | Notes |
 |---|---|---|
 | `Secure` | `false` | `Secure` flag on the session cookie — **set it in production** |
+| `LoginField` | `LoginEmail` | `LoginUsername` signs in with `users.username`; email becomes optional |
+| `DisableSignup` | `false` | leaves `POST /signup` unmounted |
+| `DisableReset` | `false` | leaves the three reset routes unmounted; `ResetURL` is then not required |
 | `SessionTTL` | 7 days | |
 | `ResetTokenTTL` | 15 minutes | |
 | `CookieName` | `session_token` | |
 | `MinPassword` | 8 | signup, change and reset |
 | `Mailer` | none | required for the reset routes |
-| `ResetURL` | **required** | builds the emailed link |
+| `ResetURL` | **required** unless `DisableReset` | builds the emailed link |
 | `ResetEmail` | English copy | override for another language |
 | `Skipper` | none | your own public routes |
 | `Optional` | none | public routes that still load a valid session |
 | `OnSignup` | none | runs in the signup transaction |
 
+## Username login and admin-managed users
+
+For a deployment where users have no public signup and no email, set
+`LoginField: goauth.LoginUsername`, `DisableSignup` and `DisableReset`. `login`
+then takes `{"username", "password"}`. `users.email` and `users.username` are
+both nullable and unique, with a `CHECK` that at least one is set.
+
+Users are created, and their lost passwords reset, from your own code:
+
+```go
+user, err := a.CreateUser(ctx, tx, goauth.CreateUserParams{
+    Username: "ana", Password: "...", Role: "volunteer",
+})                                          // ErrIdentifierTaken, ErrPasswordTooShort
+err = a.SetPassword(ctx, userID, "new...")  // also deletes the user's sessions
+err = a.SetDisabled(ctx, userID, true)      // blocks login and RequireAuth
+```
+
+`CreateUser` runs on a transaction you own, so your own rows (a profile, say)
+commit or roll back with the user. A disabled user gets `403` at login, after
+the password check, and `401` from `RequireAuth`; `users.disabled_at` records
+when. `name` defaults to the username.
+
 ## What it deliberately does not do
 
-- Grant roles. `RequireRole` reads `users.role`; writing it is your
-  application's decision, and keeping that out of here is intentional.
+- Decide who may hold a role. `RequireRole` reads `users.role`; `CreateUser`
+  writes whatever role you pass, and checking that the caller may is yours.
 - OAuth. The `accounts` table has the columns, but only `provider_id =
   'credential'` is ever written.
 - Email verification on signup, rate limiting, 2FA, refresh-token rotation.

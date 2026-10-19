@@ -36,13 +36,15 @@ type Session struct {
 }
 
 type User struct {
-	ID        uuid.UUID          `json:"id"`
-	Name      string             `json:"name"`
-	Email     string             `json:"email"`
-	Image     pgtype.Text        `json:"image"`
-	Role      string             `json:"role"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID         uuid.UUID          `json:"id"`
+	Name       string             `json:"name"`
+	Email      pgtype.Text        `json:"email"`
+	Username   pgtype.Text        `json:"username"`
+	Image      pgtype.Text        `json:"image"`
+	Role       string             `json:"role"`
+	DisabledAt pgtype.Timestamptz `json:"disabled_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Verification struct {

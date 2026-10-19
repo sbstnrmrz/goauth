@@ -92,6 +92,10 @@ func (a *Auth) RequireAuth() echo.MiddlewareFunc {
 				return unauthorized("session expired")
 			}
 
+			if row.DisabledAt.Valid {
+				return unauthorized("account disabled")
+			}
+
 			SetUserID(c, row.Session.UserID)
 			SetRole(c, row.Role)
 

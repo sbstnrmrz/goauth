@@ -16,11 +16,16 @@
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
+    email TEXT UNIQUE,
+    username TEXT UNIQUE,
     image TEXT,
     role TEXT NOT NULL DEFAULT 'user',
+    disabled_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT users_identifier_check
+        CHECK (email IS NOT NULL OR username IS NOT NULL)
 );
 
 CREATE TABLE accounts (

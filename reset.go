@@ -66,6 +66,11 @@ func (a *Auth) ForgotPassword() echo.HandlerFunc {
 			return c.String(http.StatusInternalServerError, "failed to process request")
 		}
 
+		// A user created with a username only has nowhere to send the link.
+		if !user.Email.Valid {
+			return c.NoContent(http.StatusNoContent)
+		}
+
 		token, err := generateToken()
 		if err != nil {
 			slog.Error("failed to generate reset token", "error", err)
@@ -97,7 +102,7 @@ func (a *Auth) ForgotPassword() echo.HandlerFunc {
 
 			link := a.cfg.ResetURL(url.QueryEscape(token))
 			subject, text, html := a.cfg.ResetEmail(user.Name, link, a.cfg.ResetTokenTTL)
-			if err := a.cfg.Mailer.Send(sendCtx, user.Email, subject, text, html); err != nil {
+			if err := a.cfg.Mailer.Send(sendCtx, user.Email.String, subject, text, html); err != nil {
 				slog.Error("failed to send reset email", "error", err, "user_id", user.ID)
 			}
 		}()

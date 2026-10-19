@@ -51,26 +51,42 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (name, email, image)
-VALUES ($1, $2, $3)
-RETURNING id, name, email, image, role, created_at, updated_at
+INSERT INTO users (name, email, username, image, role)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    COALESCE(NULLIF($5::text, ''), 'user')
+)
+RETURNING id, name, email, username, image, role, disabled_at, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	Name  string      `json:"name"`
-	Email string      `json:"email"`
-	Image pgtype.Text `json:"image"`
+	Name     string      `json:"name"`
+	Email    pgtype.Text `json:"email"`
+	Username pgtype.Text `json:"username"`
+	Image    pgtype.Text `json:"image"`
+	Role     string      `json:"role"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Name, arg.Email, arg.Image)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Name,
+		arg.Email,
+		arg.Username,
+		arg.Image,
+		arg.Role,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Email,
+		&i.Username,
 		&i.Image,
 		&i.Role,
+		&i.DisabledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -137,8 +153,39 @@ func (q *Queries) GetAccountByUserID(ctx context.Context, arg GetAccountByUserID
 	return i, err
 }
 
+const getAccountByUsername = `-- name: GetAccountByUsername :one
+SELECT accounts.id, accounts.user_id, accounts.provider_id, accounts.account_id, accounts.password, accounts.access_token, accounts.refresh_token, accounts.access_token_expires_at, accounts.refresh_token_expires_at, accounts.scope, accounts.created_at, accounts.updated_at FROM accounts
+JOIN users ON users.id = accounts.user_id
+WHERE users.username = $1 AND accounts.provider_id = $2
+`
+
+type GetAccountByUsernameParams struct {
+	Username   pgtype.Text `json:"username"`
+	ProviderID string      `json:"provider_id"`
+}
+
+func (q *Queries) GetAccountByUsername(ctx context.Context, arg GetAccountByUsernameParams) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByUsername, arg.Username, arg.ProviderID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProviderID,
+		&i.AccountID,
+		&i.Password,
+		&i.AccessToken,
+		&i.RefreshToken,
+		&i.AccessTokenExpiresAt,
+		&i.RefreshTokenExpiresAt,
+		&i.Scope,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, image, role, created_at, updated_at FROM users
+SELECT id, name, email, username, image, role, disabled_at, created_at, updated_at FROM users
 WHERE id = $1
 `
 
@@ -149,12 +196,31 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.ID,
 		&i.Name,
 		&i.Email,
+		&i.Username,
 		&i.Image,
 		&i.Role,
+		&i.DisabledAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const setUserDisabled = `-- name: SetUserDisabled :exec
+UPDATE users
+SET disabled_at = CASE WHEN $1::boolean THEN now() ELSE NULL END,
+    updated_at = now()
+WHERE id = $2
+`
+
+type SetUserDisabledParams struct {
+	Disabled bool      `json:"disabled"`
+	ID       uuid.UUID `json:"id"`
+}
+
+func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) error {
+	_, err := q.db.Exec(ctx, setUserDisabled, arg.Disabled, arg.ID)
+	return err
 }
 
 const updateAccountPassword = `-- name: UpdateAccountPassword :exec
